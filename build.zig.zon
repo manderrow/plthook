@@ -1,0 +1,22 @@
+.{
+    .name = .plthook,
+
+    .version = "0.0.0",
+
+    .fingerprint = 0x877c1a32c5f154f7, // Changing this has security and trust implications.
+
+    .minimum_zig_version = "0.14.0",
+
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "lib",
+        "plthook.h",
+        "plthook_elf.c",
+        "plthook_osx.c",
+        "plthook_win32.c",
+    },
+}
