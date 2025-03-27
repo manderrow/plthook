@@ -23,8 +23,14 @@ pub fn build(b: *std.Build) !void {
         }),
     });
 
-    if (target.result.os.tag == .macos) {
-        lib_mod.addIncludePath(b.path("lib/include/osx"));
+    switch (target.result.os.tag) {
+        .macos => {
+            lib_mod.addIncludePath(b.path("lib/include/osx"));
+        },
+        .windows => {
+            lib_mod.linkSystemLibrary("Dbghelp", .{});
+        },
+        else => {},
     }
 
     const lib = b.addLibrary(.{
