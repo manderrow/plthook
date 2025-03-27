@@ -13,6 +13,7 @@ pub fn build(b: *std.Build) !void {
         .link_libc = true,
     });
     lib_mod.addIncludePath(b.path("."));
+    lib_mod.addIncludePath(b.path("include"));
 
     lib_mod.addCSourceFile(.{
         .file = b.path(switch (target.result.os.tag) {

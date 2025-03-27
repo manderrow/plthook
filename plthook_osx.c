@@ -46,6 +46,7 @@
 #include <sys/mman.h>
 #include <mach-o/fixup-chains.h>
 #include "plthook.h"
+#include "include/plthook_osx_internal.h"
 
 // #define PLTHOOK_DEBUG_CMD 1
 // #define PLTHOOK_DEBUG_BIND 1
@@ -183,7 +184,6 @@ typedef struct {
     const struct linkedit_data_command *chained_fixups;
 } data_t;
 
-static int plthook_open_real(plthook_t **plthook_out, uint32_t image_idx, const struct mach_header *mh, const char *image_name);
 static unsigned int set_bind_addrs(data_t *data, unsigned int idx, uint32_t bind_off, uint32_t bind_size, char weak);
 static void set_bind_addr(data_t *d, unsigned int *idx, const char *sym_name, int seg_index, int seg_offset, int addend, char weak);
 static int read_chained_fixups(data_t *d, const struct mach_header *mh, const char *image_name);
@@ -327,7 +327,7 @@ int plthook_open_by_address(plthook_t **plthook_out, void *address)
     return PLTHOOK_FILE_NOT_FOUND;
 }
 
-static int plthook_open_real(plthook_t **plthook_out, uint32_t image_idx, const struct mach_header *mh, const char *image_name)
+int plthook_open_real(plthook_t **plthook_out, uint32_t image_idx, const struct mach_header *mh, const char *image_name)
 {
     struct load_command *cmd;
     const struct dyld_info_command *dyld_info = NULL;

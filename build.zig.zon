@@ -12,11 +12,12 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "src",
-        "lib",
         "plthook.h",
         "plthook_elf.c",
         "plthook_osx.c",
         "plthook_win32.c",
+        "include",
+        "lib",
+        "src",
     },
 }
