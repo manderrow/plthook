@@ -27,6 +27,31 @@ pub const Error = blk: {
     break :blk @Type(.{ .error_set = &errors });
 };
 
+fn adapt_result(result: Result) Error!void {
+    return switch (result) {
+        .Success => {},
+        inline else => |tag| @field(Error, @tagName(tag)),
+    };
+}
+
+pub fn open_by_name(name: [*:0]const u8) Error!*c.plthook_t {
+    var plthook_out: ?*c.plthook_t = undefined;
+    try adapt_result(@enumFromInt(c.plthook_open(&plthook_out, name)));
+    return plthook_out.?;
+}
+
+pub fn open_by_address(address: usize) Error!*c.plthook_t {
+    var plthook_out: ?*c.plthook_t = undefined;
+    try adapt_result(@enumFromInt(c.plthook_open_by_address(&plthook_out, @ptrFromInt(address))));
+    return plthook_out.?;
+}
+
+pub fn open_by_handle(handle: *anyopaque) Error!*c.plthook_t {
+    var plthook_out: ?*c.plthook_t = undefined;
+    try adapt_result(@enumFromInt(c.plthook_open_by_handle(&plthook_out, handle)));
+    return plthook_out.?;
+}
+
 test {
     std.testing.refAllDecls(macos);
 }
