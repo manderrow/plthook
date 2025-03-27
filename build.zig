@@ -5,12 +5,14 @@ pub fn build(b: *std.Build) !void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib_mod = b.createModule(.{
+    const lib_mod = b.addModule("plthook", .{
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
         .strip = true,
         .link_libc = true,
     });
+    lib_mod.addIncludePath(b.path("."));
 
     lib_mod.addCSourceFile(.{
         .file = b.path(switch (target.result.os.tag) {
