@@ -5,11 +5,16 @@ pub fn build(b: *std.Build) !void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const strip = b.option(bool, "strip", "Forces stripping on all optimization modes") orelse switch (optimize) {
+        .Debug, .ReleaseSafe => false,
+        .ReleaseFast, .ReleaseSmall => true,
+    };
+
     const lib_mod = b.addModule("plthook", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
-        .strip = true,
+        .strip = strip,
         .link_libc = true,
     });
     lib_mod.addIncludePath(b.path("."));
