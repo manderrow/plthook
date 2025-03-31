@@ -1,7 +1,6 @@
-build-and-test: build test
+build-and-test optimize="ReleaseFast": (build-no-args optimize) test
 
-build-no-args optimize="ReleaseFast":
-	build -Doptimize={{optimize}}
+build-no-args optimize="ReleaseFast": (build "-Doptimize="+optimize)
 
 build *ARGS:
 	zig build {{ARGS}} -Dtarget=x86_64-linux-gnu
