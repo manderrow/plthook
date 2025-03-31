@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) !void {
             .windows => "plthook_win32.c",
             else => return error.UnsupportedOS,
         }),
+        .flags = &.{ "-Wall", "-Werror" },
     });
 
     switch (target.result.os.tag) {
@@ -57,10 +58,13 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    lib_test_prog_mod.addCSourceFiles(.{ .files = &.{
-        "test/testprog.c",
-        "test/libtest.c",
-    } });
+    lib_test_prog_mod.addCSourceFiles(.{
+        .files = &.{
+            "test/testprog.c",
+            "test/libtest.c",
+        },
+        .flags = &.{ "-Wall", "-Werror" },
+    });
     lib_test_prog_mod.addIncludePath(b.path("."));
 
     lib_test_prog_mod.linkLibrary(lib);
