@@ -58,7 +58,7 @@ pub fn openByHandle(handle: *anyopaque) Error!*c.plthook_t {
 
 pub fn openByFilename(name: [*:0]const u8) (error{FileNotFound} | Error)!*c.plthook {
     switch (builtin.os.tag) {
-        .windows => {},
+        .windows => @compileError("Unsupported OS"),
         .macos => {
             const info = system.getImageByFilename(name) orelse return error.FileNotFound;
             return system.open(info.idx, null, null);
