@@ -27,7 +27,7 @@ pub fn getImageByFilename(name_ptr: [*:0]const u8) ?struct { idx: u32, name: [:0
     const name = std.mem.span(name_ptr);
     for (1..std.c._dyld_image_count()) |idx| {
         const image_name = std.mem.span(std.c._dyld_get_image_name(@intCast(idx)));
-        if (std.mem.endsWith(u8, image_name, name) != null) {
+        if (std.mem.endsWith(u8, image_name, name)) {
             logger.debug("found image \"{s}\" matching \"{s}\"", .{ image_name, name });
             return .{ .idx = @intCast(idx), .name = image_name };
         }

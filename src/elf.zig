@@ -10,7 +10,7 @@ pub const HandleByNameContext = struct {
         _ = size;
 
         if (info.name) |name| {
-            if (std.mem.endsWith(u8, std.mem.span(name), ctx.find_name) != null) {
+            if (std.mem.endsWith(u8, std.mem.span(name), ctx.find_name)) {
                 logger.debug("found image \"{s}\" matching \"{s}\"", .{ name, ctx.find_name });
                 ctx.result = info.addr;
                 return error.Done;
