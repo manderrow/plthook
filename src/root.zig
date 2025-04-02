@@ -56,7 +56,7 @@ pub fn openByHandle(handle: *anyopaque) Error!*c.plthook_t {
     return plthook_out.?;
 }
 
-pub fn openByFilename(name: [*:0]const u8) (error{FileNotFound} | Error)!*c.plthook {
+pub fn openByFilename(name: [*:0]const u8) (error{FileNotFound} || Error)!*c.plthook {
     switch (builtin.os.tag) {
         .windows => @compileError("Unsupported OS"),
         .macos => {
