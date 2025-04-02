@@ -65,7 +65,7 @@ pub fn openByFilename(name: [*:0]const u8) (error{FileNotFound} || Error)!*c.plt
         },
         else => {
             var ctx = system.HandleByNameContext{ .find_name = std.mem.span(name) };
-            std.posix.dl_iterate_phdr(&ctx, error{Done}, ctx.process) catch |e| {
+            std.posix.dl_iterate_phdr(&ctx, error{Done}, system.HandleByNameContext.process) catch |e| {
                 switch (e) {
                     error.Done => return openByAddress(ctx.result),
                 }
