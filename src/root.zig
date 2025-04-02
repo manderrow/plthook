@@ -2,7 +2,11 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 pub const c = @cImport(@cInclude("plthook.h"));
-pub const macos = if (builtin.os.tag == .macos) @import("macos.zig");
+pub const system = switch (builtin.os.tag) {
+    .macos => @import("macos.zig"),
+    .windows => {},
+    else => @import("elf.zig"),
+};
 
 pub const Result = enum(c_int) {
     Success = c.PLTHOOK_SUCCESS,
@@ -27,31 +31,46 @@ pub const Error = blk: {
     break :blk @Type(.{ .error_set = &errors });
 };
 
-fn adapt_result(result: Result) Error!void {
+fn adaptResult(result: Result) Error!void {
     return switch (result) {
         .Success => {},
         inline else => |tag| @field(Error, @tagName(tag)),
     };
 }
 
-pub fn open_by_name(name: [*:0]const u8) Error!*c.plthook_t {
+pub fn openByName(name: [*:0]const u8) Error!*c.plthook_t {
     var plthook_out: ?*c.plthook_t = undefined;
-    try adapt_result(@enumFromInt(c.plthook_open(&plthook_out, name)));
+    try adaptResult(@enumFromInt(c.plthook_open(&plthook_out, name)));
     return plthook_out.?;
 }
 
-pub fn open_by_address(address: usize) Error!*c.plthook_t {
+pub fn openByAddress(address: usize) Error!*c.plthook_t {
     var plthook_out: ?*c.plthook_t = undefined;
-    try adapt_result(@enumFromInt(c.plthook_open_by_address(&plthook_out, @ptrFromInt(address))));
+    try adaptResult(@enumFromInt(c.plthook_open_by_address(&plthook_out, @ptrFromInt(address))));
     return plthook_out.?;
 }
 
-pub fn open_by_handle(handle: *anyopaque) Error!*c.plthook_t {
+pub fn openByHandle(handle: *anyopaque) Error!*c.plthook_t {
     var plthook_out: ?*c.plthook_t = undefined;
-    try adapt_result(@enumFromInt(c.plthook_open_by_handle(&plthook_out, handle)));
+    try adaptResult(@enumFromInt(c.plthook_open_by_handle(&plthook_out, handle)));
     return plthook_out.?;
 }
 
-test {
-    std.testing.refAllDecls(macos);
+pub fn openByFilename(name: [*:0]const u8) (error{FileNotFound} | Error)!*c.plthook {
+    switch (builtin.os.tag) {
+        .windows => {},
+        .macos => {
+            const info = system.getImageByFilename(name) orelse return error.FileNotFound;
+            return system.open(info.idx, null, null);
+        },
+        else => {
+            var ctx = system.HandleByNameContext{ .find_name = std.mem.span(name) };
+            std.posix.dl_iterate_phdr(&ctx, error{Done}, ctx.process) catch |e| {
+                switch (e) {
+                    error.Done => return openByAddress(ctx.result),
+                }
+            };
+            return error.FileNotFound;
+        },
+    }
 }
