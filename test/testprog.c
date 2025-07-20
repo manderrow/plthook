@@ -125,48 +125,48 @@ error:
 #define CHK_RESULT(func_name, str, expected_result) do { \
     double result__; \
     reset_result(); \
-    result__ = func_name(str, NULL); \
+    result__ = func_name(str); \
     check_result(str, result__, expected_result, __LINE__); \
 } while (0)
 
-static double (*strtod_cdecl_old_func)(const char *, char**);
+static double (*strtod_cdecl_old_func)(const char *);
 #if defined _WIN32 || defined __CYGWIN__
-static double (__stdcall *strtod_stdcall_old_func)(const char *, char**);
-static double (__fastcall *strtod_fastcall_old_func)(const char *, char**);
+static double (__stdcall *strtod_stdcall_old_func)(const char *);
+static double (__fastcall *strtod_fastcall_old_func)(const char *);
 #endif
 #if defined _WIN32
-static double (*strtod_export_by_ordinal_old_func)(const char *, char**);
+static double (*strtod_export_by_ordinal_old_func)(const char *);
 #endif
 
 /* hook func from libtest to libc. */
-static double strtod_hook_func(const char *str, char **endptr)
+static double strtod_hook_func(const char *str)
 {
-    double result = strtod(str, endptr);
+    double result = strtod(str, NULL);
     set_result(&val_lib2libc, str, result);
     return result;
 }
 
 /* hook func from testprog to libtest. */
-static double strtod_cdecl_hook_func(const char *str, char **endptr)
+static double strtod_cdecl_hook_func(const char *str)
 {
-    double result = strtod_cdecl_old_func(str, endptr);
+    double result = strtod_cdecl_old_func(str);
     set_result(&val_exe2lib, str, result);
     return result;
 }
 
 #if defined _WIN32 || defined __CYGWIN__
 /* hook func from testprog to libtest. */
-static double __stdcall strtod_stdcall_hook_func(const char *str, char **endptr)
+static double __stdcall strtod_stdcall_hook_func(const char *str)
 {
-    double result = strtod_stdcall_old_func(str, endptr);
+    double result = strtod_stdcall_old_func(str);
     set_result(&val_exe2lib, str, result);
     return result;
 }
 
 /* hook func from testprog to libtest. */
-static double __fastcall strtod_fastcall_hook_func(const char *str, char **endptr)
+static double __fastcall strtod_fastcall_hook_func(const char *str)
 {
-    double result = strtod_fastcall_old_func(str, endptr);
+    double result = strtod_fastcall_old_func(str);
     set_result(&val_exe2lib, str, result);
     return result;
 }
@@ -174,9 +174,9 @@ static double __fastcall strtod_fastcall_hook_func(const char *str, char **endpt
 
 #if defined _WIN32
 /* hook func from testprog to libtest. */
-static double strtod_export_by_ordinal_hook_func(const char *str, char **endptr)
+static double strtod_export_by_ordinal_hook_func(const char *str)
 {
-    double result = strtod_export_by_ordinal_old_func(str, endptr);
+    double result = strtod_export_by_ordinal_old_func(str);
     set_result(&val_exe2lib, str, result);
     return result;
 }
@@ -210,8 +210,10 @@ static void test_plthook_enum(plthook_t *plthook, enum_test_data_t *test_data)
 
 static void show_usage(const char *arg0)
 {
-    fprintf(stderr, "Usage: %s (open | open_by_handle | open_by_address)\n", arg0);
+    fprintf(stderr, "Usage: %s (open | open_by_handle | open_by_address) LIB_PATH\n", arg0);
 }
+
+const char *filename;
 
 static void hook_function_calls_in_executable(enum open_mode open_mode)
 {
@@ -232,9 +234,10 @@ static void hook_function_calls_in_executable(enum open_mode open_mode)
         CHK_PH(plthook_open_by_handle(&plthook, handle));
         break;
     case OPEN_MODE_BY_ADDRESS:
-        CHK_PH(plthook_open_by_address(&plthook, &show_usage));
+        CHK_PH(plthook_open_by_address(&plthook, &strtod_cdecl));
         break;
     }
+    printf("opening %s via %d\n", filename, open_mode);
     test_plthook_enum(plthook, funcs_called_by_main);
     CHK_PH(plthook_replace(plthook, "strtod_cdecl", (void*)strtod_cdecl_hook_func, (void**)&strtod_cdecl_old_func));
 #if defined _WIN32 || defined __CYGWIN__
@@ -251,11 +254,6 @@ static void hook_function_calls_in_library(enum open_mode open_mode)
 {
     plthook_t *plthook;
     void *handle;
-#if defined _WIN32 || defined __CYGWIN__
-    const char *filename = "libtest.dll";
-#else
-    const char *filename = "libtest.so";
-#endif
 #ifndef WIN32
     void *address;
 #endif
@@ -296,7 +294,7 @@ int main(int argc, char **argv)
     double expected_result = strtod("3.7", NULL);
     enum open_mode open_mode;
 
-    if (argc != 2) {
+    if (argc != 3) {
         show_usage(argv[0]);
         exit(1);
     }
@@ -310,15 +308,16 @@ int main(int argc, char **argv)
         show_usage(argv[0]);
         exit(1);
     }
+	filename = argv[2];
 
     /* Resolve the function addresses by lazy binding. */
-    strtod_cdecl("3.7", NULL);
+    strtod_cdecl("3.7");
 #if defined _WIN32 || defined __CYGWIN__
-    strtod_stdcall("3.7", NULL);
-    strtod_fastcall("3.7", NULL);
+    strtod_stdcall("3.7");
+    strtod_fastcall("3.7");
 #endif
 #if defined _WIN32
-    strtod_export_by_ordinal("3.7", NULL);
+    strtod_export_by_ordinal("3.7");
 #endif
 
     hook_function_calls_in_executable(open_mode);

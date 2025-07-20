@@ -58,33 +58,45 @@ pub fn build(b: *std.Build) !void {
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
-    const lib_test_prog_mod = b.createModule(.{
+    const lib_test_mod = b.createModule(.{
+        .root_source_file = b.path("test/libtest.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    lib_test_prog_mod.addCSourceFiles(.{
-        .files = &.{
-            "test/testprog.c",
-            "test/libtest.c",
-        },
+    const lib_test = b.addLibrary(.{
+        .name = "plthook-test",
+        .root_module = lib_test_mod,
+        .linkage = .dynamic,
+    });
+
+    const test_prog_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    test_prog_mod.addCSourceFiles(.{
+        .files = &.{"test/testprog.c"},
         .flags = &.{ "-Wall", "-Werror" },
     });
-    lib_test_prog_mod.addIncludePath(b.path("."));
 
-    lib_test_prog_mod.linkLibrary(lib);
+    test_prog_mod.addIncludePath(b.path("."));
 
-    const lib_test_prog = b.addExecutable(.{
-        .name = "plthook-test",
-        .root_module = lib_test_prog_mod,
+    test_prog_mod.linkLibrary(lib);
+    test_prog_mod.linkLibrary(lib_test);
+
+    const test_prog = b.addExecutable(.{
+        .name = "plthook-testprog",
+        .root_module = test_prog_mod,
     });
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 
     for ([_][]const u8{ "open", "open_by_handle", "open_by_address" }) |mode| {
-        const run_lib_test_prog = b.addRunArtifact(lib_test_prog);
+        const run_lib_test_prog = b.addRunArtifact(test_prog);
         run_lib_test_prog.addArg(mode);
+        run_lib_test_prog.addArtifactArg(lib_test);
         test_step.dependOn(&run_lib_test_prog.step);
     }
 }
