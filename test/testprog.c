@@ -73,59 +73,32 @@ typedef struct hooked_val_t hooked_val_t;
 extern hooked_val_t val_exe2lib;
 extern hooked_val_t val_lib2libc;
 
-void set_result(hooked_val_t *hv, const char *str, double result);
-
-static double (*strtod_cdecl_old_func)(const char *);
+extern double (*strtod_cdecl_old_func)(const char *);
 #if defined _WIN32 || defined __CYGWIN__
-static double (__stdcall *strtod_stdcall_old_func)(const char *);
-static double (__fastcall *strtod_fastcall_old_func)(const char *);
+extern double (__stdcall *strtod_stdcall_old_func)(const char *);
+extern double (__fastcall *strtod_fastcall_old_func)(const char *);
 #endif
 #if defined _WIN32
-static double (*strtod_export_by_ordinal_old_func)(const char *);
+extern double (*strtod_export_by_ordinal_old_func)(const char *);
 #endif
 
 /* hook func from libtest to libc. */
-static double strtod_hook_func(const char *str)
-{
-    double result = strtod(str, NULL);
-    set_result(&val_lib2libc, str, result);
-    return result;
-}
+double strtod_hook_func(const char *str);
 
 /* hook func from testprog to libtest. */
-static double strtod_cdecl_hook_func(const char *str)
-{
-    double result = strtod_cdecl_old_func(str);
-    set_result(&val_exe2lib, str, result);
-    return result;
-}
+double strtod_cdecl_hook_func(const char *str);
 
 #if defined _WIN32 || defined __CYGWIN__
 /* hook func from testprog to libtest. */
-static double __stdcall strtod_stdcall_hook_func(const char *str)
-{
-    double result = strtod_stdcall_old_func(str);
-    set_result(&val_exe2lib, str, result);
-    return result;
-}
+double __stdcall strtod_stdcall_hook_func(const char *str);
 
 /* hook func from testprog to libtest. */
-static double __fastcall strtod_fastcall_hook_func(const char *str)
-{
-    double result = strtod_fastcall_old_func(str);
-    set_result(&val_exe2lib, str, result);
-    return result;
-}
+double __fastcall strtod_fastcall_hook_func(const char *str);
 #endif
 
 #if defined _WIN32
 /* hook func from testprog to libtest. */
-static double strtod_export_by_ordinal_hook_func(const char *str)
-{
-    double result = strtod_export_by_ordinal_old_func(str);
-    set_result(&val_exe2lib, str, result);
-    return result;
-}
+double strtod_export_by_ordinal_hook_func(const char *str);
 #endif
 
 static void test_plthook_enum(plthook_t *plthook, enum_test_data_t *test_data)

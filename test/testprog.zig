@@ -21,17 +21,17 @@ fn showUsage() noreturn {
 
 extern fn strtod(str: [*:0]const u8, ?*[*:0]const u8) f64;
 
-const HookedVal = extern struct {
+const HookedVal = struct {
     str: [30:0]u8 = .{0} ** 30,
     result: f64 = 0.0,
 };
 
 /// value captured by hook from executable to libtest.
-export var val_exe2lib: HookedVal = .{};
+var val_exe2lib: HookedVal = .{};
 /// value captured by hook from libtest to libc.
-export var val_lib2libc: HookedVal = .{};
+var val_lib2libc: HookedVal = .{};
 
-export fn set_result(hv: *HookedVal, str: [*:0]const u8, result: f64) void {
+fn setResult(hv: *HookedVal, str: [*:0]const u8, result: f64) void {
     const strs = std.mem.span(str);
     @memcpy(hv.str[0..strs.len], strs);
     hv.str[strs.len] = 0;
@@ -55,6 +55,57 @@ fn testResult(comptime func: fn (str: [*:0]const u8) callconv(.c) f64, str: [:0]
     val_lib2libc = .{};
     const result__ = func(str);
     try expectResult(str, result__, expected_result, src.line);
+}
+
+export var strtod_cdecl_old_func: ?*const fn ([*:0]const u8) callconv(.c) f64 = null;
+
+/// hook func from libtest to libc.
+export fn strtod_hook_func(str: [*:0]const u8) f64 {
+    const result = strtod(str, null);
+    setResult(&val_lib2libc, str, result);
+    return result;
+}
+
+/// hook func from testprog to libtest.
+export fn strtod_cdecl_hook_func(str: [*:0]const u8) f64 {
+    const result = strtod_cdecl_old_func.?(str);
+    setResult(&val_exe2lib, str, result);
+    return result;
+}
+
+comptime {
+    if (builtin.os.tag == .windows) {
+        if (builtin.cpu.arch == .x86) {
+            _ = struct {
+                export var strtod_stdcall_old_func: ?fn ([*:0]const u8) callconv(.{ .x86_stdcall = .{} }) f64 = null;
+                export var strtod_fastcall_old_func: ?fn ([*:0]const u8) callconv(.{ .x86_fastcall = .{} }) f64 = null;
+
+                /// hook func from testprog to libtest.
+                export fn strtod_stdcall_hook_func(str: [*:0]const u8) callconv(.{ .x86_stdcall = .{} }) void {
+                    const result = strtod_stdcall_old_func(str);
+                    setResult(&val_exe2lib, str, result);
+                    return result;
+                }
+
+                /// hook func from testprog to libtest.
+                export fn strtod_fastcall_hook_func(str: [*:0]const u8) callconv(.{ .x86_fastcall = .{} }) void {
+                    const result = strtod_fastcall_old_func(str);
+                    setResult(&val_exe2lib, str, result);
+                    return result;
+                }
+            };
+        }
+        _ = struct {
+            export var strtod_export_by_ordinal_old_func: ?fn ([*:0]const u8) callconv(.c) f64 = null;
+
+            /// hook func from testprog to libtest.
+            export fn strtod_export_by_ordinal_hook_func(str: [*:0]const u8) void {
+                const result = strtod_export_by_ordinal_old_func(str);
+                setResult(&val_exe2lib, str, result);
+                return result;
+            }
+        };
+    }
 }
 
 pub fn main() !void {
