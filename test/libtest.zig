@@ -1,21 +1,23 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-fn strtod(str: [*:0]const u8) f64 {
-    return std.fmt.parseFloat(f64, std.mem.span(str)) catch 0.0;
+extern fn strtod(str: [*:0]const u8, ?*[*:0]const u8) f64;
+
+fn strtod_cust(str: [*:0]const u8) f64 {
+    return strtod(str, null);
 }
 
 export fn strtod_cdecl(str: [*:0]const u8) f64 {
-    return strtod(str);
+    return strtod_cust(str);
 }
 
 const windows = if (builtin.os.tag == .windows) struct {
     export fn strtod_stdcall(str: [*:0]const u8) callconv(.winapi) f64 {
-        return strtod(str);
+        return strtod_cust(str);
     }
 
     export fn strtod_fastcall(str: [*:0]const u8) callconv(if (builtin.target.cpu.arch == .x86) .x86_fastcall else .c) f64 {
-        return strtod(str);
+        return strtod_cust(str);
     }
 };
 

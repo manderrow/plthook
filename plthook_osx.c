@@ -48,11 +48,6 @@
 #include "plthook.h"
 #include "include/plthook_osx_internal.h"
 
-// #define PLTHOOK_DEBUG_CMD 1
-// #define PLTHOOK_DEBUG_BIND 1
-// #define PLTHOOK_DEBUG_FIXUPS 1
-// #define PLTHOOK_DEBUG_ADDR 1
-
 #ifdef PLTHOOK_DEBUG_CMD
 #define DEBUG_CMD(...) fprintf(stderr, __VA_ARGS__)
 #else
@@ -73,79 +68,7 @@
 #define DEBUG_BIND_IF(cond, ...)
 #endif
 
-#ifdef PLTHOOK_DEBUG_ADDR
-#include <mach/mach.h>
-
-#define INHERIT_MAX_SIZE 11
-static char *inherit_to_str(vm_inherit_t inherit, char *buf)
-{
-    switch (inherit) {
-    case VM_INHERIT_SHARE: return "share";
-    case VM_INHERIT_COPY: return "copy";
-    case VM_INHERIT_NONE: return "none";
-    case VM_INHERIT_DONATE_COPY: return "donate_copy";
-    default:
-        sprintf(buf, "%d", inherit);
-        return buf;
-    }
-}
-
-#define BEHAVIOR_MAX_SIZE 16
-static char *behavior_to_str(vm_behavior_t behavior, char *buf)
-{
-    switch (behavior) {
-    case VM_BEHAVIOR_DEFAULT: return "default";
-    case VM_BEHAVIOR_RANDOM: return "random";
-    case VM_BEHAVIOR_SEQUENTIAL: return "sequential";
-    case VM_BEHAVIOR_RSEQNTL: return "rseqntl";
-    case VM_BEHAVIOR_WILLNEED: return "willneed";
-    case VM_BEHAVIOR_DONTNEED: return "dontneed";
-    case VM_BEHAVIOR_FREE: return "free";
-    case VM_BEHAVIOR_ZERO_WIRED_PAGES: return "zero";
-    case VM_BEHAVIOR_REUSABLE: return "reusable";
-    case VM_BEHAVIOR_REUSE: return "reuse";
-    case VM_BEHAVIOR_CAN_REUSE: return "can";
-    case VM_BEHAVIOR_PAGEOUT: return "pageout";
-    default:
-        sprintf(buf, "%d", behavior);
-        return buf;
-    }
-}
-
-static void dump_maps(const char *image_name)
-{
-    mach_port_t task = mach_task_self();
-    vm_region_basic_info_data_64_t info;
-    mach_msg_type_number_t info_count = VM_REGION_BASIC_INFO_COUNT_64;
-    memory_object_name_t object = 0;
-    vm_address_t addr = 0;
-    vm_size_t size;
-    char inherit_buf[INHERIT_MAX_SIZE + 1];
-    char behavior_buf[BEHAVIOR_MAX_SIZE + 1];
-
-    fprintf(stderr, "MEMORY MAP(%s)\n", image_name);
-    fprintf(stderr, " start address    end address      protection    max_protection inherit     shared reserved offset   behavior         user_wired_count\n");
-    while (vm_region_64(task, &addr, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &info_count, &object) == KERN_SUCCESS) {
-        fprintf(stderr, " %016lx-%016lx %c%c%c(%08x) %c%c%c(%08x)  %-*s %c      %c        %08llx %-*s %u\n",
-                addr, addr + size,
-                (info.protection & VM_PROT_READ) ? 'r' : '-',
-                (info.protection & VM_PROT_WRITE) ? 'w' : '-',
-                (info.protection & VM_PROT_EXECUTE) ? 'x' : '-',
-                info.protection,
-                (info.max_protection & VM_PROT_READ) ? 'r' : '-',
-                (info.max_protection & VM_PROT_WRITE) ? 'w' : '-',
-                (info.max_protection & VM_PROT_EXECUTE) ? 'x' : '-',
-                info.max_protection,
-                INHERIT_MAX_SIZE, inherit_to_str(info.inheritance, inherit_buf),
-                info.shared ? 'Y' : 'N',
-                info.reserved ? 'Y' : 'N',
-                info.offset,
-                BEHAVIOR_MAX_SIZE, behavior_to_str(info.behavior, behavior_buf),
-                info.user_wired_count);
-        addr += size;
-    }
-}
-#endif
+void dump_maps(const char *image_name);
 
 typedef struct {
     const char *name;
@@ -168,7 +91,7 @@ struct plthook {
     bind_address_t entries[1]; /* This must be the last. */
 };
 
-#define MAX_SEGMENTS 8
+#define MAX_SEGMENTS 9
 #define MAX_SECTIONS 30
 
 typedef struct {
@@ -426,7 +349,7 @@ int plthook_open_real(plthook_t **plthook_out, uint32_t image_idx, const struct 
             }
 #endif
             if (data.num_segments == MAX_SEGMENTS) {
-                set_errmsg("Too many segments: %s", image_name);
+                set_errmsg("Too many segments: %s, %d", image_name, data.num_segments);
                 return PLTHOOK_INTERNAL_ERROR;
             }
             data.segments[data.num_segments++] = segment64;
@@ -553,6 +476,7 @@ int plthook_open_real(plthook_t **plthook_out, uint32_t image_idx, const struct 
         nbind = set_bind_addrs(&data, nbind, dyld_info->bind_off, dyld_info->bind_size, 0);
         nbind = set_bind_addrs(&data, nbind, dyld_info->weak_bind_off, dyld_info->weak_bind_size, 1);
         nbind = set_bind_addrs(&data, nbind, dyld_info->lazy_bind_off, dyld_info->lazy_bind_size, 0);
+        DEBUG_BIND("entry 25: %s\n", data.plthook->entries[25].name);
     }
     set_mem_prot(data.plthook);
 
@@ -611,7 +535,7 @@ static unsigned int set_bind_addrs(data_t *data, unsigned int idx, uint32_t bind
             break;
         case BIND_OPCODE_SET_ADDEND_SLEB:
             addend = sleb128(&ptr);
-            DEBUG_BIND_IF(cond, "BIND_OPCODE_SET_ADDEND_SLEB: ordinal = %lld\n", addend);
+            DEBUG_BIND_IF(cond, "BIND_OPCODE_SET_ADDEND_SLEB: ordinal = %d\n", addend);
             break;
         case BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB:
             seg_index = imm;

@@ -8,6 +8,10 @@ pub const system = switch (builtin.os.tag) {
     else => @import("elf.zig"),
 };
 
+comptime {
+    _ = system;
+}
+
 pub const Result = enum(c_int) {
     Success = c.PLTHOOK_SUCCESS,
     FileNotFound = c.PLTHOOK_FILE_NOT_FOUND,

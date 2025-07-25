@@ -80,7 +80,7 @@ static hooked_val_t val_exe2lib;
 /* value captured by hook from libtest to libc. */
 static hooked_val_t val_lib2libc;
 
-static void reset_result(void)
+void reset_result(void)
 {
     val_exe2lib.str[0] = '\0';
     val_exe2lib.result = 0.0;
@@ -94,7 +94,7 @@ static void set_result(hooked_val_t *hv, const char *str, double result)
     hv->result = result;
 }
 
-static void check_result(const char *str, double result, double expected_result, long line)
+void check_result(const char *str, double result, double expected_result, long line)
 {
     if (result != expected_result) {
         goto error;
@@ -121,13 +121,6 @@ error:
             line);
     exit(1);
 }
-
-#define CHK_RESULT(func_name, str, expected_result) do { \
-    double result__; \
-    reset_result(); \
-    result__ = func_name(str); \
-    check_result(str, result__, expected_result, __LINE__); \
-} while (0)
 
 static double (*strtod_cdecl_old_func)(const char *);
 #if defined _WIN32 || defined __CYGWIN__
@@ -201,25 +194,19 @@ static void test_plthook_enum(plthook_t *plthook, enum_test_data_t *test_data)
             fprintf(stderr, "%s is not enumerated by plthook_enum.\n", test_data[i].name);
             pos = 0;
             while (plthook_enum(plthook, &pos, &name, &addr) == 0) {
-                printf("   %s\n", name);
+                fprintf(stderr, "   %s\n", name);
             }
             exit(1);
         }
     }
 }
 
-static void show_usage(const char *arg0)
-{
-    fprintf(stderr, "Usage: %s (open | open_by_handle | open_by_address) LIB_PATH\n", arg0);
-}
-
-const char *filename;
-
-static void hook_function_calls_in_executable(enum open_mode open_mode)
+void hook_function_calls_in_executable(enum open_mode open_mode)
 {
     plthook_t *plthook;
     void *handle;
 
+    fprintf(stderr, "opening executable via %d\n", open_mode);
     switch (open_mode) {
     case OPEN_MODE_DEFAULT:
         CHK_PH(plthook_open(&plthook, NULL));
@@ -234,10 +221,9 @@ static void hook_function_calls_in_executable(enum open_mode open_mode)
         CHK_PH(plthook_open_by_handle(&plthook, handle));
         break;
     case OPEN_MODE_BY_ADDRESS:
-        CHK_PH(plthook_open_by_address(&plthook, &strtod_cdecl));
+        CHK_PH(plthook_open_by_address(&plthook, &hook_function_calls_in_executable));
         break;
     }
-    printf("opening %s via %d\n", filename, open_mode);
     test_plthook_enum(plthook, funcs_called_by_main);
     CHK_PH(plthook_replace(plthook, "strtod_cdecl", (void*)strtod_cdecl_hook_func, (void**)&strtod_cdecl_old_func));
 #if defined _WIN32 || defined __CYGWIN__
@@ -250,7 +236,7 @@ static void hook_function_calls_in_executable(enum open_mode open_mode)
     plthook_close(plthook);
 }
 
-static void hook_function_calls_in_library(enum open_mode open_mode)
+void hook_function_calls_in_library(enum open_mode open_mode, const char *filename)
 {
     plthook_t *plthook;
     void *handle;
@@ -258,6 +244,7 @@ static void hook_function_calls_in_library(enum open_mode open_mode)
     void *address;
 #endif
 
+    fprintf(stderr, "opening %s via %d\n", filename, open_mode);
     switch (open_mode) {
     case OPEN_MODE_DEFAULT:
         CHK_PH(plthook_open(&plthook, filename));
@@ -289,49 +276,3 @@ static void hook_function_calls_in_library(enum open_mode open_mode)
     plthook_close(plthook);
 }
 
-int main(int argc, char **argv)
-{
-    double expected_result = strtod("3.7", NULL);
-    enum open_mode open_mode;
-
-    if (argc != 3) {
-        show_usage(argv[0]);
-        exit(1);
-    }
-    if (strcmp(argv[1], "open") == 0) {
-        open_mode = OPEN_MODE_DEFAULT;
-    } else if (strcmp(argv[1], "open_by_handle") == 0) {
-        open_mode = OPEN_MODE_BY_HANDLE;
-    } else if (strcmp(argv[1], "open_by_address") == 0) {
-        open_mode = OPEN_MODE_BY_ADDRESS;
-    } else {
-        show_usage(argv[0]);
-        exit(1);
-    }
-	filename = argv[2];
-
-    /* Resolve the function addresses by lazy binding. */
-    strtod_cdecl("3.7");
-#if defined _WIN32 || defined __CYGWIN__
-    strtod_stdcall("3.7");
-    strtod_fastcall("3.7");
-#endif
-#if defined _WIN32
-    strtod_export_by_ordinal("3.7");
-#endif
-
-    hook_function_calls_in_executable(open_mode);
-    hook_function_calls_in_library(open_mode);
-
-    CHK_RESULT(strtod_cdecl, "3.7", expected_result);
-#if defined _WIN32 || defined __CYGWIN__
-    CHK_RESULT(strtod_stdcall, "3.7", expected_result);
-    CHK_RESULT(strtod_fastcall, "3.7", expected_result);
-#endif
-#if defined _WIN32
-    CHK_RESULT(strtod_export_by_ordinal, "3.7", expected_result);
-#endif
-
-    printf("success\n");
-    return 0;
-}

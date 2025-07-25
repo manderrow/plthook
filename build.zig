@@ -10,6 +10,8 @@ pub fn build(b: *std.Build) !void {
         .ReleaseFast, .ReleaseSmall => true,
     };
 
+    const trace = b.option(bool, "trace", "Enables extremely verbose logging") orelse false;
+
     const lib_mod = b.addModule("plthook", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -19,6 +21,13 @@ pub fn build(b: *std.Build) !void {
     });
     lib_mod.addIncludePath(b.path("."));
     lib_mod.addIncludePath(b.path("include"));
+
+    if (trace) {
+        lib_mod.addCMacro("PLTHOOK_DEBUG_CMD", "1");
+        lib_mod.addCMacro("PLTHOOK_DEBUG_BIND", "1");
+        lib_mod.addCMacro("PLTHOOK_DEBUG_FIXUPS", "1");
+        lib_mod.addCMacro("PLTHOOK_DEBUG_ADDR", "1");
+    }
 
     lib_mod.addCSourceFile(.{
         .file = b.path(switch (target.result.os.tag) {
@@ -71,6 +80,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     const test_prog_mod = b.createModule(.{
+        .root_source_file = b.path("test/testprog.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -96,7 +106,7 @@ pub fn build(b: *std.Build) !void {
     for ([_][]const u8{ "open", "open_by_handle", "open_by_address" }) |mode| {
         const run_lib_test_prog = b.addRunArtifact(test_prog);
         run_lib_test_prog.addArg(mode);
-        run_lib_test_prog.addArtifactArg(lib_test);
+        run_lib_test_prog.addArg(lib_test.out_filename);
         test_step.dependOn(&run_lib_test_prog.step);
     }
 }
