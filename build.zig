@@ -85,14 +85,10 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    test_prog_mod.addCSourceFiles(.{
-        .files = &.{"test/testprog.c"},
-        .flags = &.{ "-Wall", "-Werror" },
-    });
+    test_prog_mod.addImport("plthook", lib_mod);
 
     test_prog_mod.addIncludePath(b.path("."));
 
-    test_prog_mod.linkLibrary(lib);
     test_prog_mod.linkLibrary(lib_test);
 
     const test_prog = b.addExecutable(.{
@@ -102,6 +98,8 @@ pub fn build(b: *std.Build) !void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
+
+    test_step.dependOn(&b.addInstallArtifact(test_prog, .{}).step);
 
     for ([_][]const u8{ "open", "open_by_handle", "open_by_address" }) |mode| {
         const run_lib_test_prog = b.addRunArtifact(test_prog);

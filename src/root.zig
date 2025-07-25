@@ -42,7 +42,7 @@ fn adaptResult(result: Result) Error!void {
     };
 }
 
-pub fn openByName(name: [*:0]const u8) Error!*c.plthook_t {
+pub fn openByName(name: ?[*:0]const u8) Error!*c.plthook_t {
     var plthook_out: ?*c.plthook_t = undefined;
     try adaptResult(@enumFromInt(c.plthook_open(&plthook_out, name)));
     return plthook_out.?;
@@ -77,4 +77,14 @@ pub fn openByFilename(name: [*:0]const u8) (error{FileNotFound} || Error)!*c.plt
             return error.FileNotFound;
         },
     }
+}
+
+pub fn replace(plthook: *c.plthook_t, name: [:0]const u8, new_func: anytype) Error!@TypeOf(new_func) {
+    const info = @typeInfo(@TypeOf(new_func));
+    if (info != .pointer or info.pointer.size != .one or @typeInfo(info.pointer.child) != .@"fn") {
+        @compileError("Expected a fn pointer, found " ++ @typeName(@TypeOf(new_func)));
+    }
+    var old_func: @TypeOf(new_func) = undefined;
+    try adaptResult(@enumFromInt(c.plthook_replace(plthook, name, @constCast(@ptrCast(new_func)), @ptrCast(&old_func))));
+    return old_func;
 }
