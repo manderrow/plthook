@@ -68,59 +68,12 @@ static enum_test_data_t funcs_called_by_main[] = {
     {NULL, },
 };
 
-#define STRTOD_STR_SIZE 30
+typedef struct hooked_val_t hooked_val_t;
 
-typedef struct {
-    char str[STRTOD_STR_SIZE];
-    double result;
-} hooked_val_t;
+extern hooked_val_t val_exe2lib;
+extern hooked_val_t val_lib2libc;
 
-/* value captured by hook from executable to libtest. */
-static hooked_val_t val_exe2lib;
-/* value captured by hook from libtest to libc. */
-static hooked_val_t val_lib2libc;
-
-void reset_result(void)
-{
-    val_exe2lib.str[0] = '\0';
-    val_exe2lib.result = 0.0;
-    val_lib2libc.str[0] = '\0';
-    val_lib2libc.result = 0.0;
-}
-
-static void set_result(hooked_val_t *hv, const char *str, double result)
-{
-    strncpy(hv->str, str, sizeof(hv->str));
-    hv->result = result;
-}
-
-void check_result(const char *str, double result, double expected_result, long line)
-{
-    if (result != expected_result) {
-        goto error;
-    }
-    if (strcmp(val_exe2lib.str, str) != 0) {
-        goto error;
-    }
-    if (val_exe2lib.result != result) {
-        goto error;
-    }
-    if (strcmp(val_lib2libc.str, str) != 0) {
-        goto error;
-    }
-    if (val_lib2libc.result != result) {
-        goto error;
-    }
-    return;
-error:
-    fprintf(stderr,
-            "Error: ['%s', %f, %f] ['%s', %f] ['%s', %f] at line %ld\n",
-            str, result, expected_result,
-            val_exe2lib.str, val_exe2lib.result,
-            val_lib2libc.str, val_lib2libc.result,
-            line);
-    exit(1);
-}
+void set_result(hooked_val_t *hv, const char *str, double result);
 
 static double (*strtod_cdecl_old_func)(const char *);
 #if defined _WIN32 || defined __CYGWIN__

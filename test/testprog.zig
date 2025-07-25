@@ -21,13 +21,40 @@ fn showUsage() noreturn {
 
 extern fn strtod(str: [*:0]const u8, ?*[*:0]const u8) f64;
 
-extern fn reset_result() void;
-extern fn check_result(str: [*:0]const u8, result: f64, expected_result: f64, line: c_long) void;
+const HookedVal = extern struct {
+    str: [30:0]u8 = .{0} ** 30,
+    result: f64 = 0.0,
+};
 
-fn CHK_RESULT(comptime func: fn (str: [*:0]const u8) callconv(.c) f64, str: [:0]const u8, expected_result: f64, src: std.builtin.SourceLocation) void {
-    reset_result();
+/// value captured by hook from executable to libtest.
+export var val_exe2lib: HookedVal = .{};
+/// value captured by hook from libtest to libc.
+export var val_lib2libc: HookedVal = .{};
+
+export fn set_result(hv: *HookedVal, str: [*:0]const u8, result: f64) void {
+    const strs = std.mem.span(str);
+    @memcpy(hv.str[0..strs.len], strs);
+    hv.str[strs.len] = 0;
+    hv.result = result;
+}
+
+fn expectResult(str: [:0]const u8, result: f64, expected_result: f64, line: u32) !void {
+    errdefer {
+        std.debug.print("Error: ['{s}', {}, {}] ['{s}', {}] ['{s}', {}] at line {}\n", .{ str, result, expected_result, val_exe2lib.str, val_exe2lib.result, val_lib2libc.str, val_lib2libc.result, line });
+    }
+
+    try std.testing.expectEqual(expected_result, result);
+    try std.testing.expectEqualStrings(str, std.mem.span(@as([*:0]const u8, &val_exe2lib.str)));
+    try std.testing.expectEqual(expected_result, val_exe2lib.result);
+    try std.testing.expectEqualStrings(str, std.mem.span(@as([*:0]const u8, &val_lib2libc.str)));
+    try std.testing.expectEqual(expected_result, val_lib2libc.result);
+}
+
+fn testResult(comptime func: fn (str: [*:0]const u8) callconv(.c) f64, str: [:0]const u8, expected_result: f64, src: std.builtin.SourceLocation) !void {
+    val_exe2lib = .{};
+    val_lib2libc = .{};
     const result__ = func(str);
-    check_result(str, result__, expected_result, @intCast(src.line));
+    try expectResult(str, result__, expected_result, src.line);
 }
 
 pub fn main() !void {
@@ -51,11 +78,11 @@ pub fn main() !void {
     hook_function_calls_in_executable(open_mode);
     hook_function_calls_in_library(open_mode, filename);
 
-    CHK_RESULT(lib.strtod_cdecl, "3.7", expected_result, @src());
+    try testResult(lib.strtod_cdecl, "3.7", expected_result, @src());
     if (builtin.os.tag == .windows) {
-        CHK_RESULT(lib.strtod_stdcall, "3.7", expected_result, @src());
-        CHK_RESULT(lib.strtod_fastcall, "3.7", expected_result, @src());
-        CHK_RESULT(lib.strtod_export_by_ordinal, "3.7", expected_result, @src());
+        try testResult(lib.strtod_stdcall, "3.7", expected_result, @src());
+        try testResult(lib.strtod_fastcall, "3.7", expected_result, @src());
+        try testResult(lib.strtod_export_by_ordinal, "3.7", expected_result, @src());
     }
 
     std.debug.print("success\n", .{});
