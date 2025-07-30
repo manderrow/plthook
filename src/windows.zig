@@ -20,6 +20,56 @@ const Plthook = extern struct {
     }
 };
 
+const GET_MODULE_HANDLE_EX_FLAG = packed struct(std.os.windows.DWORD) {
+    pin: bool = false,
+    unchanged_refcount: bool = false,
+    from_address: bool = false,
+    _unused: u29 = 0,
+};
+
+extern fn GetModuleHandleExW(
+    dwFlags: GET_MODULE_HANDLE_EX_FLAG,
+    lpModuleName: packed union {
+        filename: ?std.os.windows.LPCWSTR,
+        address: *anyopaque,
+    },
+    phModule: *?std.os.windows.HMODULE,
+) std.os.windows.BOOL;
+
+export fn plthook_open(plthook: **Plthook, filename_p: ?[*:0]const u8) root.Result {
+    const filename = if (filename_p) |p| std.mem.span(p) else null;
+    // TODO: use an allocated buffer if filename is longer
+    var filename_w: [4095:0]u16 = undefined;
+    const filename_w_s = if (filename) |s| blk: {
+        const len = std.unicode.utf8ToUtf16Le(&filename_w, s) catch return .InvalidArgument;
+        filename_w[len] = 0;
+        break :blk filename_w[0..len :0].ptr;
+    } else null;
+    var hMod: ?std.os.windows.HMODULE = null;
+    if (GetModuleHandleExW(.{ .unchanged_refcount = true }, .{ .filename = filename_w_s }, &hMod) == 0) {
+        _ = std.fmt.bufPrintZ(&errbuf, "Cannot get module {?s}: ", .{filename}) catch {};
+        append_errmsg_win();
+        return .FileNotFound;
+    }
+    return plthook_open_real(plthook, hMod.?);
+}
+
+export fn plthook_open_by_handle(plthook: **Plthook, hMod: std.os.windows.HMODULE) root.Result {
+    return plthook_open_real(plthook, hMod);
+}
+
+export fn plthook_open_by_address(plthook: **Plthook, address: *anyopaque) root.Result {
+    var hMod: ?std.os.windows.HMODULE = null;
+    if (GetModuleHandleExW(.{ .unchanged_refcount = true, .from_address = true }, .{ .address = address }, &hMod) == 0) {
+        _ = std.fmt.bufPrintZ(&errbuf, "Cannot get module at address 0x{x}: ", .{@intFromPtr(address)}) catch {};
+        append_errmsg_win();
+        return .FileNotFound;
+    }
+    return plthook_open_real(plthook, hMod.?);
+}
+
+extern fn plthook_open_real(plthook: **Plthook, hMod: std.os.windows.HMODULE) root.Result;
+
 /// Returns `-1` when the end is reached.
 export fn plthook_enum(plthook: *Plthook, pos: *c_uint, name_out: *?[*:0]const u8, addr_out: *?**anyopaque) c_int {
     const entries = plthook.getEntries();
@@ -121,16 +171,7 @@ export fn append_errmsg_s(str: [*:0]const u8) void {
 
 export fn append_errmsg_i(i: usize) void {
     const n = std.mem.span(plthook_error()).len;
-    _ = std.fmt.bufPrintZ(errbuf[n..], "{}", .{i}) catch {
-        errbuf[n] = 0;
-    };
-}
-
-export fn append_errmsg_ix(i: usize) void {
-    const n = std.mem.span(plthook_error()).len;
-    _ = std.fmt.bufPrintZ(errbuf[n..], "{x}", .{i}) catch {
-        errbuf[n] = 0;
-    };
+    _ = std.fmt.bufPrintZ(errbuf[n..], "{}", .{i}) catch {};
 }
 
 inline fn MAKELANGID(p: c_ushort, s: c_ushort) std.os.windows.LANGID {

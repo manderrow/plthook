@@ -76,59 +76,14 @@ struct plthook {
     import_address_entry_t entries[1];
 };
 
-static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod);
-
 extern void clear_errmsg();
 extern void append_errmsg_s(const char *str);
 extern void append_errmsg_i(uintptr_t i);
-extern void append_errmsg_ix(uintptr_t i);
 extern void append_errmsg_win();
 
 extern const char *winsock2_ordinal2name(int ordinal);
 
-int plthook_open(plthook_t **plthook_out, const char *filename)
-{
-    HMODULE hMod;
-
-    *plthook_out = NULL;
-    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, filename, &hMod)) {
-        clear_errmsg();
-        append_errmsg_s("Cannot get module");
-        append_errmsg_s(filename);
-        append_errmsg_s(": ");
-        append_errmsg_win();
-        return PLTHOOK_FILE_NOT_FOUND;
-    }
-    return plthook_open_real(plthook_out, hMod);
-}
-
-int plthook_open_by_handle(plthook_t **plthook_out, void *hndl)
-{
-    if (hndl == NULL) {
-        clear_errmsg();
-        append_errmsg_s("NULL handle");
-        return PLTHOOK_FILE_NOT_FOUND;
-    }
-    return plthook_open_real(plthook_out, (HMODULE)hndl);
-}
-
-int plthook_open_by_address(plthook_t **plthook_out, void *address)
-{
-    HMODULE hMod;
-
-    *plthook_out = NULL;
-    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, address, &hMod)) {
-        clear_errmsg();
-        append_errmsg_s("Cannot get module at address");
-        append_errmsg_ix((uintptr_t) address);
-        append_errmsg_s(": ");
-        append_errmsg_win();
-        return PLTHOOK_FILE_NOT_FOUND;
-    }
-    return plthook_open_real(plthook_out, hMod);
-}
-
-static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
+int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
 {
     plthook_t *plthook;
     ULONG ulSize;
