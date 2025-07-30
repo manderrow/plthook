@@ -220,10 +220,3 @@ static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
     *plthook_out = plthook;
     return 0;
 }
-
-void plthook_close(plthook_t *plthook)
-{
-    if (plthook != NULL) {
-        free(plthook);
-    }
-}

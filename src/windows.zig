@@ -97,6 +97,10 @@ export fn plthook_replace(plthook: *Plthook, funcname_p: [*:0]const u8, funcaddr
     return .Success;
 }
 
+export fn plthook_close(plthook: *Plthook) void {
+    std.c.free(plthook);
+}
+
 var errbuf = std.mem.zeroes([1024:0]u8);
 
 export fn plthook_error() [*:0]const u8 {
