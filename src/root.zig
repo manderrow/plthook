@@ -4,7 +4,7 @@ const std = @import("std");
 pub const c = @cImport(@cInclude("plthook.h"));
 pub const system = switch (builtin.os.tag) {
     .macos => @import("macos.zig"),
-    .windows => {},
+    .windows => @import("windows.zig"),
     else => @import("elf.zig"),
 };
 

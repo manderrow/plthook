@@ -33,6 +33,7 @@
  * or implied, of the authors.
  *
  */
+#include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdarg.h>
@@ -75,11 +76,15 @@ struct plthook {
     import_address_entry_t entries[1];
 };
 
-static char errbuf[512];
 static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod);
-static void set_errmsg(_Printf_format_string_ const char *fmt, ...) __attribute__((__format__ (__printf__, 1, 2)));
-static void set_errmsg2(_Printf_format_string_ const char *fmt, ...) __attribute__((__format__ (__printf__, 1, 2)));
-static const char *winsock2_ordinal2name(int ordinal);
+
+extern void clear_errmsg();
+extern void append_errmsg_s(const char *str);
+extern void append_errmsg_i(uintptr_t i);
+extern void append_errmsg_ix(uintptr_t i);
+extern void append_errmsg_win();
+
+extern const char *winsock2_ordinal2name(int ordinal);
 
 int plthook_open(plthook_t **plthook_out, const char *filename)
 {
@@ -87,7 +92,11 @@ int plthook_open(plthook_t **plthook_out, const char *filename)
 
     *plthook_out = NULL;
     if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, filename, &hMod)) {
-        set_errmsg2("Cannot get module %s: ", filename);
+        clear_errmsg();
+        append_errmsg_s("Cannot get module");
+        append_errmsg_s(filename);
+        append_errmsg_s(": ");
+        append_errmsg_win();
         return PLTHOOK_FILE_NOT_FOUND;
     }
     return plthook_open_real(plthook_out, hMod);
@@ -96,7 +105,8 @@ int plthook_open(plthook_t **plthook_out, const char *filename)
 int plthook_open_by_handle(plthook_t **plthook_out, void *hndl)
 {
     if (hndl == NULL) {
-        set_errmsg("NULL handle");
+        clear_errmsg();
+        append_errmsg_s("NULL handle");
         return PLTHOOK_FILE_NOT_FOUND;
     }
     return plthook_open_real(plthook_out, (HMODULE)hndl);
@@ -108,7 +118,11 @@ int plthook_open_by_address(plthook_t **plthook_out, void *address)
 
     *plthook_out = NULL;
     if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, address, &hMod)) {
-        set_errmsg2("Cannot get module at address %p: ", address);
+        clear_errmsg();
+        append_errmsg_s("Cannot get module at address");
+        append_errmsg_ix((uintptr_t) address);
+        append_errmsg_s(": ");
+        append_errmsg_win();
         return PLTHOOK_FILE_NOT_FOUND;
     }
     return plthook_open_real(plthook_out, hMod);
@@ -126,7 +140,9 @@ static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
 
     desc_head = (IMAGE_IMPORT_DESCRIPTOR*)ImageDirectoryEntryToData(hMod, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &ulSize);
     if (desc_head == NULL) {
-        set_errmsg2("ImageDirectoryEntryToData error: ");
+        clear_errmsg();
+        append_errmsg_s("ImageDirectoryEntryToData error: ");
+        append_errmsg_win();
         return PLTHOOK_INTERNAL_ERROR;
     }
 
@@ -160,7 +176,10 @@ static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
 
     plthook = calloc(1, offsetof(plthook_t, entries) + sizeof(import_address_entry_t) * num_entries + ordinal_name_buflen);
     if (plthook == NULL) {
-        set_errmsg("failed to allocate memory: %" SIZE_T_FMT " bytes", sizeof(plthook_t));
+        clear_errmsg();
+        append_errmsg_s("failed to allocate memory: ");
+        append_errmsg_i(sizeof(plthook_t));
+        append_errmsg_s(" bytes");
         return PLTHOOK_OUT_OF_MEMORY;
     }
     plthook->hMod = hMod;
@@ -240,7 +259,8 @@ int plthook_replace(plthook_t *plthook, const char *funcname, void *funcaddr, vo
     BOOL import_by_ordinal = funcname[0] != '?' && strstr(funcname, ":@") != NULL;
 
     if (plthook == NULL) {
-        set_errmsg("invalid argument: The first argument is null.");
+        clear_errmsg();
+        append_errmsg_s("invalid argument: The first argument is null.");
         return PLTHOOK_INVALID_ARGUMENT;
     }
     while ((rv = plthook_enum(plthook, &pos, &name, &addr)) == 0) {
@@ -273,7 +293,9 @@ int plthook_replace(plthook_t *plthook, const char *funcname, void *funcaddr, vo
         }
     }
     if (rv == EOF) {
-        set_errmsg("no such function: %s", funcname);
+        clear_errmsg();
+        append_errmsg_s("no such function: ");
+        append_errmsg_s(funcname);
         rv = PLTHOOK_FUNCTION_NOT_FOUND;
     }
     return rv;
@@ -287,119 +309,4 @@ void plthook_close(plthook_t *plthook)
     if (plthook != NULL) {
         free(plthook);
     }
-}
-
-const char *plthook_error(void)
-{
-    return errbuf;
-}
-
-static void set_errmsg(const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(errbuf, sizeof(errbuf) - 1, fmt, ap);
-    va_end(ap);
-}
-
-static void set_errmsg2(const char *fmt, ...)
-{
-    va_list ap;
-    size_t len;
-
-    va_start(ap, fmt);
-    vsnprintf(errbuf, sizeof(errbuf) - 1, fmt, ap);
-    va_end(ap);
-    len = strlen(errbuf);
-    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM |FORMAT_MESSAGE_IGNORE_INSERTS,
-                   NULL, GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                   errbuf + len, sizeof(errbuf) - len - 1, NULL);
-}
-
-static const char *winsock2_ordinal2name(int ordinal)
-{
-    switch (ordinal) {
-    case 1: return "accept";
-    case 2: return "bind";
-    case 3: return "closesocket";
-    case 4: return "connect";
-    case 5: return "getpeername";
-    case 6: return "getsockname";
-    case 7: return "getsockopt";
-    case 8: return "htonl";
-    case 9: return "htons";
-    case 10: return "inet_addr";
-    case 11: return "inet_ntoa";
-    case 12: return "ioctlsocket";
-    case 13: return "listen";
-    case 14: return "ntohl";
-    case 15: return "ntohs";
-    case 16: return "recv";
-    case 17: return "recvfrom";
-    case 18: return "select";
-    case 19: return "send";
-    case 20: return "sendto";
-    case 21: return "setsockopt";
-    case 22: return "shutdown";
-    case 23: return "socket";
-    case 24: return "MigrateWinsockConfiguration";
-    case 51: return "gethostbyaddr";
-    case 52: return "gethostbyname";
-    case 53: return "getprotobyname";
-    case 54: return "getprotobynumber";
-    case 55: return "getservbyname";
-    case 56: return "getservbyport";
-    case 57: return "gethostname";
-    case 101: return "WSAAsyncSelect";
-    case 102: return "WSAAsyncGetHostByAddr";
-    case 103: return "WSAAsyncGetHostByName";
-    case 104: return "WSAAsyncGetProtoByNumber";
-    case 105: return "WSAAsyncGetProtoByName";
-    case 106: return "WSAAsyncGetServByPort";
-    case 107: return "WSAAsyncGetServByName";
-    case 108: return "WSACancelAsyncRequest";
-    case 109: return "WSASetBlockingHook";
-    case 110: return "WSAUnhookBlockingHook";
-    case 111: return "WSAGetLastError";
-    case 112: return "WSASetLastError";
-    case 113: return "WSACancelBlockingCall";
-    case 114: return "WSAIsBlocking";
-    case 115: return "WSAStartup";
-    case 116: return "WSACleanup";
-    case 151: return "__WSAFDIsSet";
-    case 500: return "WEP";
-    case 1000: return "WSApSetPostRoutine";
-    case 1001: return "WsControl";
-    case 1002: return "closesockinfo";
-    case 1003: return "Arecv";
-    case 1004: return "Asend";
-    case 1005: return "WSHEnumProtocols";
-    case 1100: return "inet_network";
-    case 1101: return "getnetbyname";
-    case 1102: return "rcmd";
-    case 1103: return "rexec";
-    case 1104: return "rresvport";
-    case 1105: return "sethostname";
-    case 1106: return "dn_expand";
-    case 1107: return "WSARecvEx";
-    case 1108: return "s_perror";
-    case 1109: return "GetAddressByNameA";
-    case 1110: return "GetAddressByNameW";
-    case 1111: return "EnumProtocolsA";
-    case 1112: return "EnumProtocolsW";
-    case 1113: return "GetTypeByNameA";
-    case 1114: return "GetTypeByNameW";
-    case 1115: return "GetNameByTypeA";
-    case 1116: return "GetNameByTypeW";
-    case 1117: return "SetServiceA";
-    case 1118: return "SetServiceW";
-    case 1119: return "GetServiceA";
-    case 1120: return "GetServiceW";
-    case 1130: return "NPLoadNameSpaces";
-    case 1131: return "NSPStartup";
-    case 1140: return "TransmitFile";
-    case 1141: return "AcceptEx";
-    case 1142: return "GetAcceptExSockaddrs";
-    }
-    return NULL;
 }
