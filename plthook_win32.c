@@ -33,7 +33,6 @@
  * or implied, of the authors.
  *
  */
-#include <stdint.h>
 #include <stdio.h>
 #include <stddef.h>
 #include <stdarg.h>
@@ -50,14 +49,6 @@
 #endif
 #ifndef __GNUC__
 #define __attribute__(arg)
-#endif
-
-#if defined _LP64 /* data model: I32/LP64 */
-#define SIZE_T_FMT "lu"
-#elif defined _WIN64  /* data model: IL32/P64 */
-#define SIZE_T_FMT "I64u"
-#else
-#define SIZE_T_FMT "u"
 #endif
 
 #ifdef __CYGWIN__
