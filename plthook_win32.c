@@ -221,19 +221,6 @@ static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
     return 0;
 }
 
-int plthook_enum(plthook_t *plthook, unsigned int *pos, const char **name_out, void ***addr_out)
-{
-    if (*pos >= plthook->num_entries) {
-        *name_out = NULL;
-        *addr_out = NULL;
-        return EOF;
-    }
-    *name_out = plthook->entries[*pos].name;
-    *addr_out = plthook->entries[*pos].addr;
-    (*pos)++;
-    return 0;
-}
-
 static void replace_funcaddr(void **addr, void *newfunc, void **oldfunc)
 {
     DWORD dwOld;

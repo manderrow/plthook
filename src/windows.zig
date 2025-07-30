@@ -1,5 +1,32 @@
 const std = @import("std");
 
+const import_address_entry_t = extern struct {
+    mod_name: [*:0]const u8,
+    name: [*:0]const u8,
+    addr: **anyopaque,
+};
+
+const Plthook = extern struct {
+    mod: std.os.windows.HMODULE,
+    num_entries: c_uint,
+    entries: [1]import_address_entry_t,
+};
+
+/// Returns `-1` when the end is reached.
+export fn plthook_enum(plthook: *Plthook, pos: *c_uint, name_out: *?[*:0]const u8, addr_out: *?**anyopaque) c_int {
+    if (pos.* >= plthook.num_entries) {
+        // TODO: remove
+        name_out.* = null;
+        addr_out.* = null;
+        return -1;
+    }
+    const entries: [*]import_address_entry_t = @ptrCast(&plthook.entries);
+    name_out.* = entries[pos.*].name;
+    addr_out.* = entries[pos.*].addr;
+    pos.* += 1;
+    return 0;
+}
+
 var errbuf = std.mem.zeroes([1024:0]u8);
 
 export fn plthook_error() [*:0]const u8 {
