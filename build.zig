@@ -67,17 +67,34 @@ pub fn build(b: *std.Build) !void {
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
+    const lib_dummy_mod = b.createModule(.{
+        .root_source_file = b.path("test/dummy.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const lib_dummy = b.addLibrary(.{
+        .name = "plthook-dummy",
+        .root_module = lib_dummy_mod,
+        .linkage = .dynamic,
+    });
+
     const lib_test_mod = b.createModule(.{
         .root_source_file = b.path("test/libtest.zig"),
         .target = target,
         .optimize = optimize,
     });
 
+    lib_test_mod.linkLibrary(lib_dummy);
+
     const lib_test = b.addLibrary(.{
         .name = "plthook-test",
         .root_module = lib_test_mod,
         .linkage = .dynamic,
     });
+
+    const install_lib_test = b.addInstallArtifact(lib_test, .{});
+    b.getInstallStep().dependOn(&install_lib_test.step);
 
     const test_prog_mod = b.createModule(.{
         .root_source_file = b.path("test/testprog.zig"),
@@ -105,6 +122,19 @@ pub fn build(b: *std.Build) !void {
         const run_lib_test_prog = b.addRunArtifact(test_prog);
         run_lib_test_prog.addArg(mode);
         run_lib_test_prog.addArg(lib_test.out_filename);
+        if (target.result.os.tag == .windows) {
+            const cmd = b.addRunArtifact(b.addExecutable(.{
+                .name = "copy-libs",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("test/copy-libs.zig"),
+                    .target = b.resolveTargetQuery(.{}),
+                }),
+            }));
+            cmd.addArtifactArg(lib_dummy);
+            cmd.addArtifactArg(lib_test);
+            const dir = cmd.addOutputDirectoryArg("libs");
+            run_lib_test_prog.setCwd(dir);
+        }
         test_step.dependOn(&run_lib_test_prog.step);
     }
 }

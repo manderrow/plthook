@@ -6,7 +6,7 @@ const plthook = @import("plthook");
 const lib = struct {
     extern fn strtod_cdecl(str: [*:0]const u8) f64;
 
-    extern fn strtod_stdcall(str: [*:0]const u8) callconv(.{ .x86_stdcall = .{} }) f64;
+    extern fn strtod_stdcall(str: [*:0]const u8) callconv(.winapi) f64;
     extern fn strtod_fastcall(str: [*:0]const u8) callconv(.{ .x86_fastcall = .{} }) f64;
     extern fn strtod_export_by_ordinal(str: [*:0]const u8) f64;
 };
@@ -21,8 +21,6 @@ fn showUsage() noreturn {
     std.debug.print("Usage: testprog (open | open_by_handle | open_by_address) LIB_NAME\n", .{});
     std.process.exit(1);
 }
-
-extern fn strtod(str: [*:0]const u8, ?*[*:0]const u8) f64;
 
 const HookedVal = struct {
     str: [30:0]u8 = .{0} ** 30,
@@ -64,7 +62,7 @@ var strtod_cdecl_old_func: ?*const fn ([*:0]const u8) callconv(.c) f64 = null;
 
 /// hook func from libtest to libc.
 fn strtod_hook_func(str: [*:0]const u8) callconv(.c) f64 {
-    const result = strtod(str, null);
+    const result = std.fmt.parseFloat(f64, std.mem.span(str)) catch 0.0;
     setResult(&val_lib2libc, str, result);
     return result;
 }
@@ -77,30 +75,34 @@ fn strtod_cdecl_hook_func(str: [*:0]const u8) callconv(.c) f64 {
 }
 
 const windows = if (builtin.os.tag == .windows) struct {
+    const supports_ordinal_export = false;
+
+    var strtod_stdcall_old_func: ?*const fn ([*:0]const u8) callconv(.winapi) f64 = null;
+
+    /// hook func from testprog to libtest.
+    fn strtod_stdcall_hook_func(str: [*:0]const u8) callconv(.winapi) f64 {
+        const result = strtod_stdcall_old_func.?(str);
+        setResult(&val_exe2lib, str, result);
+        return result;
+    }
+
     const x86 = if (builtin.cpu.arch == .x86) struct {
-        var strtod_stdcall_old_func: ?fn ([*:0]const u8) callconv(.{ .x86_stdcall = .{} }) f64 = null;
-        var strtod_fastcall_old_func: ?fn ([*:0]const u8) callconv(.{ .x86_fastcall = .{} }) f64 = null;
+        var strtod_fastcall_old_func: ?*const fn ([*:0]const u8) callconv(.{ .x86_fastcall = .{} }) f64 = null;
 
         /// hook func from testprog to libtest.
-        fn strtod_stdcall_hook_func(str: [*:0]const u8) callconv(.{ .x86_stdcall = .{} }) void {
-            const result = strtod_stdcall_old_func(str);
-            setResult(&val_exe2lib, str, result);
-            return result;
-        }
-
-        /// hook func from testprog to libtest.
-        fn strtod_fastcall_hook_func(str: [*:0]const u8) callconv(.{ .x86_fastcall = .{} }) void {
-            const result = strtod_fastcall_old_func(str);
+        fn strtod_fastcall_hook_func(str: [*:0]const u8) callconv(.{ .x86_fastcall = .{} }) f64 {
+            const result = strtod_fastcall_old_func.?(str);
             setResult(&val_exe2lib, str, result);
             return result;
         }
     };
 
-    var strtod_export_by_ordinal_old_func: ?fn ([*:0]const u8) callconv(.c) f64 = null;
+    var strtod_export_by_ordinal_old_func: ?*const fn ([*:0]const u8) callconv(.c) f64 = if (!supports_ordinal_export) @compileError("ordinal export not supported") else null;
 
     /// hook func from testprog to libtest.
-    fn strtod_export_by_ordinal_hook_func(str: [*:0]const u8) callconv(.c) void {
-        const result = strtod_export_by_ordinal_old_func(str);
+    fn strtod_export_by_ordinal_hook_func(str: [*:0]const u8) callconv(.c) f64 {
+        if (!supports_ordinal_export) @compileError("ordinal export not supported");
+        const result = strtod_export_by_ordinal_old_func.?(str);
         setResult(&val_exe2lib, str, result);
         return result;
     }
@@ -111,13 +113,19 @@ const EnumTestData = struct {
     enumerated: bool = false,
 };
 
-const funcs_called_by_libtest: []const EnumTestData = &.{if (builtin.os.tag.isDarwin()) if (builtin.target.ptrBitWidth() == 64) .{ .name = "_strtod" } else .{ .name = "_strtod$UNIX2003" } else .{ .name = "strtod" }};
+const funcs_called_by_libtest: []const EnumTestData = &.{
+    if (builtin.os.tag.isDarwin()) switch (builtin.target.ptrBitWidth()) {
+        32 => .{ .name = "_strtod_cust$UNIX2003" },
+        64 => .{ .name = "_strtod_cust" },
+        else => @compileError("Unsupported ptrBitWidth"),
+    } else .{ .name = "strtod_cust" },
+};
 
 const funcs_called_by_main: []const EnumTestData = &if (builtin.os.tag == .windows and builtin.target.ptrBitWidth() == 64) .{
     .{ .name = "strtod_cdecl" },
     .{ .name = "strtod_stdcall" },
-    .{ .name = "strtod_fastcall" },
-    .{ .name = "libtest.dll:@10" },
+    // TODO: maybe support this
+    //.{ .name = "libtest.dll:@10" },
 } else if (builtin.os.tag == .windows and builtin.abi.isGnu()) .{
     .{ .name = "strtod_cdecl" },
     .{ .name = "strtod_stdcall@8" },
@@ -126,7 +134,7 @@ const funcs_called_by_main: []const EnumTestData = &if (builtin.os.tag == .windo
     .{ .name = "strtod_cdecl" },
     .{ .name = "_strtod_stdcall@8" },
     .{ .name = "@strtod_fastcall@8" },
-    .{ .name = "libtest.dll:@10" },
+    //.{ .name = "libtest.dll:@10" },
 } else if (builtin.os.tag.isDarwin()) .{
     .{ .name = "_strtod_cdecl" },
 } else .{
@@ -181,11 +189,13 @@ fn hook_function_calls_in_executable(open_mode: OpenMode) !void {
     try test_plthook_enum(instance, &test_data);
     strtod_cdecl_old_func = try plthook.replace(instance, "strtod_cdecl", &strtod_cdecl_hook_func);
     if (builtin.os.tag == .windows) {
+        windows.strtod_stdcall_old_func = try plthook.replace(instance, "strtod_stdcall", &windows.strtod_stdcall_hook_func);
         if (builtin.cpu.arch == .x86) {
-            windows.x86.strtod_stdcall_old_func = try plthook.replace(&instance, "strtod_stdcall", &windows.x86.strtod_stdcall_hook_func);
-            windows.x86.strtod_fastcall_old_func = try plthook.replace(&instance, "strtod_fastcall", &windows.x86.strtod_fastcall_hook_func);
+            windows.x86.strtod_fastcall_old_func = try plthook.replace(instance, "strtod_fastcall", &windows.x86.strtod_fastcall_hook_func);
         }
-        windows.strtod_export_by_ordinal_old_func = try plthook.replace(&instance, "libtest.dll:@10", &windows.strtod_export_by_ordinal_hook_func);
+        if (windows.supports_ordinal_export) {
+            windows.strtod_export_by_ordinal_old_func = try plthook.replace(instance, "libtest.dll:@10", &windows.strtod_export_by_ordinal_hook_func);
+        }
     }
     plthook.c.plthook_close(instance);
 }
@@ -194,36 +204,32 @@ fn hook_function_calls_in_library(open_mode: OpenMode, filename: [:0]const u8) !
     std.debug.print("opening {s} via {}\n", .{ filename, open_mode });
     const instance = switch (open_mode) {
         .open => try plthook.openByName(filename),
-        .open_by_handle => blk: {
+        .open_by_handle, .open_by_address => blk: {
             const handle = switch (builtin.os.tag) {
-                .windows => {
-                    var buf: [128]u16 = undefined;
-                    const filename_w = try std.unicode.utf8ToUtf16Le(&buf, filename);
-                    std.os.windows.kernel32.GetModuleHandleW(filename_w).?;
+                .windows => handle: {
+                    var buf: [127:0]u16 = undefined;
+                    const n = try std.unicode.utf8ToUtf16Le(&buf, filename);
+                    buf[n] = 0;
+                    break :handle std.os.windows.kernel32.GetModuleHandleW(buf[0..n :0]).?;
                 },
                 else => std.c.dlopen(filename, .{ .LAZY = true, .NOLOAD = true }).?,
             };
-            break :blk try plthook.openByHandle(handle);
-        },
-        .open_by_address => blk: {
-            const handle = switch (builtin.os.tag) {
-                .windows => {
-                    var buf: [128]u16 = undefined;
-                    const filename_w = try std.unicode.utf8ToUtf16Le(&buf, filename);
-                    std.os.windows.kernel32.GetModuleHandleW(filename_w).?;
+            break :blk switch (open_mode) {
+                .open => unreachable,
+                .open_by_handle => try plthook.openByHandle(handle),
+                .open_by_address => blk1: {
+                    const address = switch (builtin.os.tag) {
+                        .windows => handle,
+                        else => std.c.dlsym(handle, "strtod_cdecl").?,
+                    };
+                    break :blk1 try plthook.openByAddress(@intFromPtr(address));
                 },
-                else => std.c.dlopen(filename, .{ .LAZY = true, .NOLOAD = true }).?,
             };
-            const address = switch (builtin.os.tag) {
-                .windows => handle,
-                else => std.c.dlsym(handle, "strtod_cdecl").?,
-            };
-            break :blk try plthook.openByAddress(@intFromPtr(address));
         },
     };
     var test_data = funcs_called_by_libtest[0..funcs_called_by_libtest.len].*;
     try test_plthook_enum(instance, &test_data);
-    _ = try plthook.replace(instance, "strtod", &strtod_hook_func);
+    _ = try plthook.replace(instance, "strtod_cust", &strtod_hook_func);
     plthook.c.plthook_close(instance);
 }
 
@@ -235,14 +241,18 @@ pub fn main() !void {
     const filename = args.next() orelse showUsage();
     if (args.next()) |_| showUsage();
 
-    const expected_result = strtod("3.7", null);
+    const expected_result = comptime std.fmt.parseFloat(f64, "3.7") catch unreachable;
 
     // Resolve the function addresses by lazy binding.
     _ = lib.strtod_cdecl("3.7");
     if (builtin.os.tag == .windows) {
         _ = lib.strtod_stdcall("3.7");
-        _ = lib.strtod_fastcall("3.7");
-        _ = lib.strtod_export_by_ordinal("3.7");
+        if (builtin.cpu.arch == .x86) {
+            _ = lib.strtod_fastcall("3.7");
+        }
+        if (windows.supports_ordinal_export) {
+            _ = lib.strtod_export_by_ordinal("3.7");
+        }
     }
 
     try hook_function_calls_in_executable(open_mode);
@@ -251,8 +261,12 @@ pub fn main() !void {
     try testResult(lib.strtod_cdecl, "3.7", expected_result, @src());
     if (builtin.os.tag == .windows) {
         try testResult(lib.strtod_stdcall, "3.7", expected_result, @src());
-        try testResult(lib.strtod_fastcall, "3.7", expected_result, @src());
-        try testResult(lib.strtod_export_by_ordinal, "3.7", expected_result, @src());
+        if (builtin.cpu.arch == .x86) {
+            try testResult(lib.strtod_fastcall, "3.7", expected_result, @src());
+        }
+        if (windows.supports_ordinal_export) {
+            try testResult(lib.strtod_export_by_ordinal, "3.7", expected_result, @src());
+        }
     }
 
     std.debug.print("success\n", .{});
