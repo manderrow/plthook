@@ -27,6 +27,23 @@ export fn plthook_enum(plthook: *Plthook, pos: *c_uint, name_out: *?[*:0]const u
     return 0;
 }
 
+export fn replace_funcaddr(addr: **anyopaque, newfunc: *anyopaque, oldfunc: ?**anyopaque) void {
+    var dwOld: std.os.windows.DWORD = 0;
+
+    if (oldfunc) |p| {
+        p.* = addr.*;
+    }
+    std.os.windows.VirtualProtect(@ptrCast(addr), @sizeOf(*anyopaque), std.os.windows.PAGE_EXECUTE_READWRITE, &dwOld) catch |e| {
+        std.debug.panic("VirtualProtect failed to remove protection: {}", .{e});
+    };
+    addr.* = newfunc;
+
+    var dwDummy: std.os.windows.DWORD = 0;
+    std.os.windows.VirtualProtect(@ptrCast(addr), @sizeOf(*anyopaque), dwOld, &dwDummy) catch |e| {
+        std.debug.print("VirtualProtect failed to restore protection: {}", .{e});
+    };
+}
+
 var errbuf = std.mem.zeroes([1024:0]u8);
 
 export fn plthook_error() [*:0]const u8 {

@@ -221,18 +221,7 @@ static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
     return 0;
 }
 
-static void replace_funcaddr(void **addr, void *newfunc, void **oldfunc)
-{
-    DWORD dwOld;
-    DWORD dwDummy;
-
-    if (oldfunc != NULL) {
-        *oldfunc = *addr;
-    }
-    VirtualProtect(addr, sizeof(void *), PAGE_EXECUTE_READWRITE, &dwOld);
-    *addr = newfunc;
-    VirtualProtect(addr, sizeof(void *), dwOld, &dwDummy);
-}
+extern void replace_funcaddr(void **addr, void *newfunc, void **oldfunc);
 
 int plthook_replace(plthook_t *plthook, const char *funcname, void *funcaddr, void **oldfunc)
 {
