@@ -221,65 +221,6 @@ static int plthook_open_real(plthook_t **plthook_out, HMODULE hMod)
     return 0;
 }
 
-extern void replace_funcaddr(void **addr, void *newfunc, void **oldfunc);
-
-int plthook_replace(plthook_t *plthook, const char *funcname, void *funcaddr, void **oldfunc)
-{
-#ifndef _WIN64
-    size_t funcnamelen = strlen(funcname);
-#endif
-    unsigned int pos = 0;
-    const char *name;
-    void **addr;
-    int rv;
-    BOOL import_by_ordinal = funcname[0] != '?' && strstr(funcname, ":@") != NULL;
-
-    if (plthook == NULL) {
-        clear_errmsg();
-        append_errmsg_s("invalid argument: The first argument is null.");
-        return PLTHOOK_INVALID_ARGUMENT;
-    }
-    while ((rv = plthook_enum(plthook, &pos, &name, &addr)) == 0) {
-        if (import_by_ordinal) {
-            if (stricmp(name, funcname) == 0) {
-                goto found;
-            }
-        } else {
-            /* import by name */
-#ifdef _WIN64
-            if (strcmp(name, funcname) == 0) {
-                goto found;
-            }
-#else
-            /* Function names may be decorated in Windows 32-bit applications. */
-            if (strncmp(name, funcname, funcnamelen) == 0) {
-                if (name[funcnamelen] == '\0' || name[funcnamelen] == '@') {
-                    goto found;
-                }
-            }
-            if (name[0] == '_' || name[0] == '@') {
-                name++;
-                if (strncmp(name, funcname, funcnamelen) == 0) {
-                    if (name[funcnamelen] == '\0' || name[funcnamelen] == '@') {
-                        goto found;
-                    }
-                }
-            }
-#endif
-        }
-    }
-    if (rv == EOF) {
-        clear_errmsg();
-        append_errmsg_s("no such function: ");
-        append_errmsg_s(funcname);
-        rv = PLTHOOK_FUNCTION_NOT_FOUND;
-    }
-    return rv;
-found:
-    replace_funcaddr(addr, funcaddr, oldfunc);
-    return 0;
-}
-
 void plthook_close(plthook_t *plthook)
 {
     if (plthook != NULL) {

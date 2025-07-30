@@ -1,4 +1,7 @@
+const builtin = @import("builtin");
 const std = @import("std");
+
+const root = @import("root.zig");
 
 const import_address_entry_t = extern struct {
     mod_name: [*:0]const u8,
@@ -10,24 +13,29 @@ const Plthook = extern struct {
     mod: std.os.windows.HMODULE,
     num_entries: c_uint,
     entries: [1]import_address_entry_t,
+
+    fn getEntries(self: *@This()) []import_address_entry_t {
+        const entries: [*]import_address_entry_t = @ptrCast(&self.entries);
+        return entries[0..self.num_entries];
+    }
 };
 
 /// Returns `-1` when the end is reached.
 export fn plthook_enum(plthook: *Plthook, pos: *c_uint, name_out: *?[*:0]const u8, addr_out: *?**anyopaque) c_int {
-    if (pos.* >= plthook.num_entries) {
+    const entries = plthook.getEntries();
+    if (pos.* >= entries.len) {
         // TODO: remove
         name_out.* = null;
         addr_out.* = null;
         return -1;
     }
-    const entries: [*]import_address_entry_t = @ptrCast(&plthook.entries);
     name_out.* = entries[pos.*].name;
     addr_out.* = entries[pos.*].addr;
     pos.* += 1;
     return 0;
 }
 
-export fn replace_funcaddr(addr: **anyopaque, newfunc: *anyopaque, oldfunc: ?**anyopaque) void {
+fn replace_funcaddr(addr: **anyopaque, newfunc: *anyopaque, oldfunc: ?**anyopaque) void {
     var dwOld: std.os.windows.DWORD = 0;
 
     if (oldfunc) |p| {
@@ -42,6 +50,51 @@ export fn replace_funcaddr(addr: **anyopaque, newfunc: *anyopaque, oldfunc: ?**a
     std.os.windows.VirtualProtect(@ptrCast(addr), @sizeOf(*anyopaque), dwOld, &dwDummy) catch |e| {
         std.debug.print("VirtualProtect failed to restore protection: {}", .{e});
     };
+}
+
+export fn plthook_replace(plthook: *Plthook, funcname_p: [*:0]const u8, funcaddr: *anyopaque, oldfunc: **anyopaque) root.Result {
+    const funcname = std.mem.span(funcname_p);
+    if (funcname.len == 0) return .InvalidArgument;
+
+    const import_by_ordinal = funcname[0] != '?' and std.mem.indexOf(u8, funcname, ":@") != null;
+
+    const addr = for (plthook.getEntries()) |entry| {
+        const name = std.mem.span(entry.name);
+        if (import_by_ordinal) {
+            if (std.ascii.eqlIgnoreCase(name, funcname)) {
+                break entry.addr;
+            }
+        } else {
+            // import by name
+            if (builtin.target.ptrBitWidth() == 64) {
+                if (std.mem.eql(u8, name, funcname)) {
+                    break entry.addr;
+                }
+            } else {
+                // Function names may be decorated in Windows 32-bit applications.
+                if (name.len >= funcname.len and std.mem.eql(u8, name[0..funcname.len], funcname)) {
+                    if (name[funcname.len] == 0 or name[funcname.len] == '@') {
+                        break entry.addr;
+                    }
+                }
+                if (name[0] == '_' or name[0] == '@') {
+                    const name1 = name[1..];
+                    if (std.mem.eql(u8, name1[0..funcname.len], funcname)) {
+                        if (name1[funcname.len] == 0 or name1[funcname.len] == '@') {
+                            break entry.addr;
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        clear_errmsg();
+        append_errmsg_s("no such function: ");
+        append_errmsg_s(funcname);
+        return .FunctionNotFound;
+    };
+    replace_funcaddr(addr, funcaddr, oldfunc);
+    return .Success;
 }
 
 var errbuf = std.mem.zeroes([1024:0]u8);
