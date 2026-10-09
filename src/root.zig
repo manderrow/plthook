@@ -25,7 +25,7 @@ pub const Result = enum(c_int) {
 
 pub const Error = blk: {
     const fields: []const std.builtin.Type.EnumField = std.meta.fields(Result);
-    var errors: [fields.len - 1]std.builtin.Type.Error = .{undefined} ** (fields.len - 1);
+    var errors: [fields.len - 1]std.builtin.Type.Error = undefined;
     var i = 0;
     for (fields) |field| {
         if (field.value == @intFromEnum(Result.Success)) continue;
