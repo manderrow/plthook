@@ -23,7 +23,7 @@ fn showUsage() noreturn {
 }
 
 const HookedVal = struct {
-    str: [30:0]u8 = .{0} ** 30,
+    str: [30:0]u8 = @splat(0),
     result: f64 = 0.0,
 };
 
